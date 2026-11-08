@@ -1,0 +1,57 @@
+package br.com.dio;
+
+import com.google.auto.service.AutoService;
+import com.squareup.javapoet.JavaFile;
+
+import javax.annotation.processing.*;
+import javax.lang.model.element.Element;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+
+import static java.util.stream.Collectors.toMap;
+import static javax.lang.model.SourceVersion.RELEASE_21;
+import static javax.lang.model.element.ElementKind.FIELD;
+
+@SupportedAnnotationTypes("br.com.dio.Builder")
+@SupportedSourceVersion(RELEASE_21)
+@AutoService(Processor.class)
+public class BuilderProcessor extends AbstractProcessor {
+    @Override
+    public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+
+        //Captura as anotações
+        for(TypeElement annotation : annotations){
+            //Filtra para o tipo que queremos
+            for(var element : roundEnv.getElementsAnnotatedWith(annotation)){
+                Map<String, TypeMirror> fields = element.getEnclosedElements().stream()
+                        .filter(e -> e.getKind() == FIELD)
+                        .collect(toMap(e -> e.getSimpleName().toString(), Element::asType));
+
+                var packegeName = processingEnv.getElementUtils().getPackageOf(element).toString();
+                var className = element.getSimpleName().toString();
+                var builderName = className + "Builder";
+
+                var typeSpec = new BuilderGenerator().create(packegeName, className, builderName, fields);
+                var javaFile = JavaFile.builder(packegeName, typeSpec)
+                        .indent("    ")
+                        .build();
+                try(
+                        var out = new PrintWriter(processingEnv.getFiler()
+                                .createSourceFile(builderName)
+                                .openWriter())
+                ){
+                        out.write(javaFile.toString());
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+
+        return true;
+    }
+}
